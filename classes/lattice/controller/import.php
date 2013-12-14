@@ -34,7 +34,159 @@ class Lattice_Controller_Import extends Controller {
 		}		
 		closedir($mydir);
 	}
+	
+	public function action_initialize()
+	{
+		$notice = "";
+		
+		if($_GET AND isset($_GET['import_dir']))
+		{
+			$import_dir = $_GET['import_dir'];
+			
+			$dir = "application/export/{$import_dir}";
+			
+			if(is_dir($dir) AND $dir != "application/export/") 
+			{
+				//grant permission to import folder -- chmod 777
+				chmod(getcwd() . '/' . $dir, 0777);
+				
+				//array to save .xml files
+				//$data = array();
+				$data = "";
+			
+				// now read all .xml files from a directory 
+				foreach(glob("$dir/*.xml") as $xml_file)   
+				{     
+					//eliminate objects.xml file from xml arrays
+					if($xml_file != "application/export/{$import_dir}/objects.xml")
+					{					
+						//array_push($data, $xml_file);   
+						
+						//asort($data);
+						if($data != "")
+						{
+							$data .= ",{$xml_file}";
+						}
+						else
+						{
+							$data .= $xml_file;
+						}
+					}  
+				}
+				echo $data;
+			}
+			elseif(isset($_POST['import_files']))
+			{
+				$data = explode(',', $_GET['import_dir']);
+				
+				//echo count($data);
+				
+				$i = 0;
+				$new_data = '';
+				foreach($data as $d):
+					if($i != 0):
+						if($new_data != "")
+						{
+							$new_data .= ",{$d}";
+						}
+						else
+						{
+							$new_data .= $d;
+						}
+					endif;
+					$i++;
+					//TODO ... I have to call import_chunk here
+					//$this->action_import_chunk($data);
+				endforeach;
+				
+				echo $new_data."<br />";
+			}
+			else
+			{
+				$notice = "Directory doesn't exist";
+				echo $notice;
+			}
+		}
+		else
+		{
+		
+			//$javascript = array();
+			//$js1 = core_lattice::convert_full_path_to_web_path(Kohana::find_file('resources', 'js/progressbar_mini', 'js'));
+			$js2 = core_lattice::convert_full_path_to_web_path(Kohana::find_file('resources', 'thirdparty/mootools/mootools', 'js'));
+			$js3 = core_lattice::convert_full_path_to_web_path(Kohana::find_file('resources', 'js/SmartAjaxForm', 'js'));
+			
+			$javascript = array($js2, $js3);
+			$css = core_lattice::convert_full_path_to_web_path(Kohana::find_file('resources', 'css/progressbar', 'css'));
+			
+			$image = core_lattice::convert_full_path_to_web_path(Kohana::find_file('resources', 'images/progress', 'png'));
+			
+			echo View::factory('setup/import')->set(array("javascript"=>$javascript, "css"=>$css, "progress_image"=>$image, "notice"=>$notice))->render();
+		}
+	}
 
+	public function action_import_chunk($xml_file, $count)
+	{	
+		echo "Starting import - if you don't see the word Done at the end of the output, it means PHP killed the script before it completed";
+		if (Kohana::config('lattice.live'))
+		{
+			die('import is disabled on sites marked live');
+		}
+		if($count == 1)
+		{
+			// clean out media dir
+			$this->destroy('application/media/');
+			$db = Database::instance();
+			$db->query(Database::DELETE, 'delete from objects');
+			$db->query(Database::UPDATE, 'alter table objects AUTO_INCREMENT = 1');
+			$db->query(Database::DELETE, 'delete from contents');
+			$db->query(Database::UPDATE, 'alter table contents AUTO_INCREMENT = 1');
+			$db->query(Database::DELETE, 'delete from objecttypes');
+			$db->query(Database::UPDATE, 'alter table objecttypes AUTO_INCREMENT = 1');
+			$db->query(Database::DELETE, 'delete from objectmaps');
+			$db->query(Database::UPDATE, 'alter table objectmaps AUTO_INCREMENT = 1');
+			$db->query(Database::DELETE, 'delete from objectrelationships');
+			$db->query(Database::UPDATE, 'alter table objectrelationships AUTO_INCREMENT = 1');
+			$db->query(Database::DELETE, 'delete from objectelementrelationships');
+			$db->query(Database::UPDATE, 'alter table objectelementrelationships AUTO_INCREMENT = 1');
+			$db->query(Database::DELETE, 'delete from rosettas');
+			$db->query(Database::UPDATE, 'alter table rosettas AUTO_INCREMENT = 1');
+			$db->query(Database::DELETE, 'delete from tags');
+			$db->query(Database::UPDATE, 'alter table tags AUTO_INCREMENT = 1');
+			$db->query(Database::DELETE, 'delete from objects_tags');
+			$db->query(Database::UPDATE, 'alter table objects_tags AUTO_INCREMENT = 1');
+			$db->query(Database::DELETE, 'delete from tags_tagbuckets');
+			$db->query(Database::UPDATE, 'alter table tags_tagbuckets AUTO_INCREMENT = 1');
+			flush();
+			ob_flush();
+		}
+		// immediately reinitialize the graph
+		Graph::configure_object_type($this->root_node_object_type, TRUE);
+		Graph::add_root_node($this->root_node_object_type);
+		
+
+		echo "\n_inserting Data {$xml_file}";
+		$this->insert_data($xml_file, NULL, core_lattice::config($xml_file, 'nodes')->item(0) );
+		
+		/* TODO part
+		Cms_Core::regenerate_images();
+		*/ 
+
+		$this->insert_relationships($xml_file);
+		
+		//unset xml file
+		unset($xml_file);
+		
+		/* TODO part
+			// and run frontend
+			echo "\n Regenerating Frontend";
+			$this->action_frontend();
+		*/
+		
+		if($count == -1)
+			echo 'Initialize Site Complete';
+	}
+	
+	
 	public function action_import($xml_file='data')
 	{
 		$mtime = microtime();
@@ -81,7 +233,7 @@ class Lattice_Controller_Import extends Controller {
 		// immediately reinitialize the graph
 		Graph::configure_object_type($this->root_node_object_type, TRUE);
 		Graph::add_root_node($this->root_node_object_type);
-
+		
 		if ($xml_file != 'data')
 		{
 			// then we are loading an export

@@ -234,10 +234,10 @@ Route::set('language', 'language/<action>(/<param1>(/<param2>))', array(
 		'controller' => 'language',
 	));
 
-Route::set('import', 'import(/<param1>)')
-	->defaults(
-		array(
-			'controller'=>'import',
-			'action'=>'import'
-		)
-	); 
+//Route::set('import', 'import(/<param1>)')
+//	->defaults(
+	//	array(
+	//		'controller'=>'import',
+	//		'action'=>'initialize'
+	//	)
+	//); 
