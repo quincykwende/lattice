@@ -1,3 +1,4 @@
+
 lattice.modules.List = new Class({
 	
 	Extends: lattice.modules.LatticeList,
